@@ -6,12 +6,16 @@ const cookieParser =require('cookie-parser')
 require('dotenv').config()
 const port =process.env.PORT || 5000 
  //middleware
- app.use(cors({
-  
-  origin:['http://localhost:5173'],
-  credentials:true
-
-}))
+ app.use(cors(
+  {
+    origin:[
+      // 'http://localhost:5173'
+      'https://car-doctors-6b651.web.app',
+      'https://car-doctors-6b651.firebaseapp.com'
+    ],
+    credentials:true
+  }
+ ))
  app.use(express.json());
 app.use(cookieParser());
 
@@ -28,27 +32,23 @@ app.use(cookieParser());
  });
  //middleware
  const logger = async(req,res,next)=>{
-  console.log('called',req.host,req.originalUrl)
+  console.log('log:info',req.method,req.url)
   next()
  }
  const verifyToken = async(req,res,next)=>{
       const token =req.cookies?.token
-      console.log('verified token',token)
-      if(!token){
-        return res.status(401).send({message:'not Authorized'})
+      console.log('Token in the middleware',token)
+     if(!token){
+      return res.status(401).send({message:'unauthorized access'})
+     }
+     jwt.verify(token,process.env.ACCESS_TOKEN_SECRET,(error,decoded)=>{
+      if(error){
+        return res.status(401).send({message:'unauthorized access'})
       }
-      jwt.verify(token,process.env.ACCESS_TOKEN_SECRET,(err,decoded)=>{
-        //err
-        if(err){
-          console.log(err)
-        return res.status(401).send({message:'not Authorized'})
-        }
-        //if the token is valid then it would be decoded
-        console.log('value in the token',decoded)
-        req.user=decoded
-        next()
-      })
-      
+      req.user=decoded;
+      next()
+     })
+     
  }
  async function run() {
    try {
@@ -56,8 +56,27 @@ app.use(cookieParser());
      await client.connect();
      const servicesCollection =client.db('carsDoctor').collection('services');
      const bookingCollection =client.db('carsDoctor').collection('bookings')
+       // auth related api
+       app.post('/jwt',logger,async(req,res)=>{
+        const user =req.body
+        console.log('user for token',user)
+        const token =jwt.sign(user,process.env.ACCESS_TOKEN_SECRET,{expiresIn:'10h'})
+        res.cookie('token',token,{
+           httpOnly:true,
+           secure:true,
+          sameSite:'none'
+        })
+        .send({success:true})
+       })
+       
+       app.post('/logout',async(req,res)=>{
+        const user =req.body;
+        console.log('login user ',user)
+        res.clearCookie('token',{maxAge:0}).send({success:true})
+       })
 
-     app.get('/services',logger,async(req,res)=>{
+     //service related api
+     app.get('/services',async(req,res)=>{
         const cursor =servicesCollection.find()
         const result = await cursor.toArray()
         res.send(result)
@@ -77,24 +96,26 @@ app.use(cookieParser());
         res.send(result)
      })
       //
-      app.post('/jwt',logger,async(req,res)=>{
-        const user =req.body
-        console.log(user)
-        const token =jwt.sign(user,process.env.ACCESS_TOKEN_SECRET,{expiresIn:'1h'})
-        res
-        .cookie('token',token,{
-          httpOnly:true,
-          secure:false,
+      // app.post('/jwt',logger,async(req,res)=>{
+      //   const user =req.body
+      //   console.log(user)
+      //   const token =jwt.sign(user,process.env.ACCESS_TOKEN_SECRET,{expiresIn:'1h'})
+      //   res
+      //   .cookie('token',token,{
+      //     httpOnly:true,
+      //     secure:false,
          
-        })
-        .send({success:true})
-      })
+      //   })
+      //   .send({success:true})
+      // })
+
      // booking
   app.get('/bookings',logger,verifyToken,async(req,res)=>{
     console.log(req.query.email)
-    console.log('user in the valid token',req.user)
-    console.log('tok tok token',req.cookies.token)
-
+    console.log('token owner info',req.user)
+    // console.log('user in the valid token',req.user)
+    // console.log('tok tok token',req.cookies.token)
+     
     let query ={};
     if(req.query.email !==req.user.email){
       return res.status(403).send({message:'forbidden access'})
@@ -106,7 +127,7 @@ app.use(cookieParser());
     res.send(result)
   })
 
-     app.post('/bookings',logger,async(req,res)=>{
+     app.post('/bookings',async(req,res)=>{
       const booking =req.body;
       console.log(booking)
       const result =await bookingCollection.insertOne(booking)

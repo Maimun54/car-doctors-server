@@ -22,4 +22,8 @@
   
 }))
 3.client side axios 
+generate a token by using jwt.sign
+create api set to cookie http only ,secure ,sameSite
+from client side : axios withCredentials true 
+cors setup origin 
 */
